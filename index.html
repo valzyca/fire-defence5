@@ -29,7 +29,7 @@
             border-style: solid; border-width: 40px; border-image: url('stone carving.png') 250 repeat;
         }
         
-        /* 背景黑色半透明屏幕（55%不透明度） */
+        /* 初始主畫面 Cover 層 - 55% 黑色半透明屏幕 */
         #start-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;
             background-color: rgba(0, 0, 0, 0.55); display: flex; flex-direction: column; justify-content: center; align-items: center;
@@ -326,6 +326,7 @@
             let centerX = W / 2; let minDim = Math.min(W, H);
             let circleCenterY = H * 0.45;
 
+            // 火原素向外發散粒子特效
             if (gameState === 'cover' || gameState === 'success_anim') {
                 if (coronaParticles.length < 120) {
                     let angle = Math.random() * Math.PI * 2;
@@ -353,7 +354,7 @@
                     let ratio = p.life / p.maxLife;
                     let grad = startCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
                     grad.addColorStop(0, 'rgba(255, 235, 160, ' + ratio + ')');
-                    grad.addColorStop(0.2, 'rgba(255, 110, 0, ' + ratio * 0.8 + ')');
+                    grad.addColorStop(0.2, 'rgba(255, 110, 0, ' + ratio * 0.9 + ')');
                     grad.addColorStop(1, 'rgba(0,0,0,0)');
                     
                     startCtx.beginPath(); 
@@ -502,29 +503,21 @@
             }, 1000);
         }
 
-        // =========================================================
-        // 🛠️ 關鍵修改：註冊冰藍色 LED 魔杖過濾器 (HSV 色彩空間)
-        // =========================================================
-        tracking.ColorTracker.registerColor('ice_blue_led', function(r, g, b) {
-            let max = Math.max(r, g, b), min = Math.min(r, g, b);
-            let v = max / 255.0; 
-            let s = max === 0 ? 0 : (max - min) / max;
-            let h = 0;
-            if (max !== min) {
-                let d = max - min;
-                if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
-                else if (max === g) h = (b - r) / d + 2;
-                else if (max === b) h = (r - g) / d + 4;
-                h /= 6;
-            }
-            let hue = h * 360;
+        // 🛠️ 專為冰藍色發光 LED 調整的追蹤演算法：
+        // 冰藍色（Cyan/Ice Blue）：綠(G)與藍(B)非常高，且遠大於紅(R)。
+        // 同時允許核心發光白光（RGB 都極高）。
+        tracking.ColorTracker.registerColor('magic_red', function(r, g, b) {
+            // 冰藍色特徵：藍色和綠色顯著高於紅色（B > 130, G > 120, 且 B,G 高於 R）
+            let isIceBlue = (b > 130) && (g > 120) && (b > r + 15) && (g > r + 10);
+            
+            // LED 核心發光過曝（極亮白藍光，R,G,B 均很高但以 B,G 為主）
+            let isGlowingCore = (b > 210) && (g > 200) && (r > 160);
 
-            // 色相: 170-230 (青/冰藍), 亮度: > 0.85 (強光源), 飽和度: < 0.65 (中心趨近白光)
-            return (hue >= 170 && hue <= 230 && v >= 0.85 && s <= 0.65);
+            return isIceBlue || isGlowingCore;
         });
 
-        const wandTracker = new tracking.ColorTracker(['ice_blue_led']);
-        wandTracker.setMinDimension(5); 
+        const wandTracker = new tracking.ColorTracker(['magic_red']);
+        wandTracker.setMinDimension(3); // 設定感應面積門檻
 
         let trackerInitialized = false;
         function initTrackerAndAR() {
@@ -533,7 +526,12 @@
 
             const videoConstraints = {
                 audio: false,
-                video: { facingMode: "user", width: { ideal: 480 }, height: { ideal: 360 } }
+                video: { 
+                    facingMode: "user", 
+                    width: { ideal: 640 }, 
+                    height: { ideal: 480 },
+                    frameRate: { ideal: 30 }
+                }
             };
 
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -558,7 +556,8 @@
                 for (let i = 0; i < event.data.length; i++) {
                     let rect = event.data[i];
                     let aspect = rect.width / rect.height;
-                    if (aspect > 0.6 && aspect < 1.5 && rect.width < (canvas.width * 0.4)) {
+                    // 過濾掉過大的背景雜訊，只抓合適尺寸的 LED 光點
+                    if (aspect > 0.5 && aspect < 1.8 && rect.width < (canvas.width * 0.35)) {
                         if (!validTarget || Math.abs(1 - aspect) < Math.abs(1 - (validTarget.width / validTarget.height))) {
                             validTarget = rect;
                         }
@@ -567,8 +566,9 @@
 
                 if (validTarget) {
                     crosshair.hasTracking = true;
+                    // 🛠️ 重心精準優化：針對 LED 燈泡「上方發光頂端」修正，偏向矩形頂部，避開下方白色接頭
                     crosshair.targetX = canvas.width - (validTarget.x + validTarget.width / 2);
-                    crosshair.targetY = validTarget.y + validTarget.height / 2;
+                    crosshair.targetY = validTarget.y + (validTarget.height * 0.25); // 鎖定在上 1/4 的發光頂端
 
                     if (gameState === 'drawing') {
                         checkWandPointCollision(crosshair.targetX, crosshair.targetY);
