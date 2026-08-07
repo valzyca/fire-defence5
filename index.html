@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Kinetic Sorcery - 巫師火原素特訓</title>
+    <title>Kinetic Sorcery - 巫師火原素特訓 (FD5.1)</title>
     
     <!-- Google Fonts 史詩級魔法書寫與哥德風格字型 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -101,6 +101,14 @@
         .hp-hat-icon { width: 26px; height: 26px; object-fit: contain; transition: all 0.3s ease; filter: drop-shadow(0 0 4px #ffd700); }
         .hp-hat-lost { opacity: 0.15; filter: grayscale(1) drop-shadow(0 0 0px transparent); transform: scale(0.75); }
 
+        /* 🛠️ 新增：畫面左下角版本標籤 */
+        #version-tag {
+            position: absolute; bottom: 12px; left: 15px; z-index: 30;
+            font-family: monospace, sans-serif; font-size: 12px; font-weight: bold;
+            color: #00d2ff; text-shadow: 0 0 4px #000, 0 0 8px rgba(0, 210, 255, 0.8);
+            letter-spacing: 1px; pointer-events: none; opacity: 0.85;
+        }
+
         /* 全螢幕巨大倒數計時文字 */
         #countdown-overlay {
             display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -140,6 +148,9 @@
 
     <!-- 實時鏡頭提前作為最底層背景 -->
     <video id="webcam" preload autoplay loop muted playsinline></video>
+
+    <!-- 🛠️ 左下角版本標籤 -->
+    <div id="version-tag">FD5.1</div>
 
     <!-- 初始主畫面符文繪製層 -->
     <div id="start-screen">
@@ -503,41 +514,19 @@
             }, 1000);
         }
 
-        // 🛠️ 輔助函式：RGB 轉 HSV 色彩空間
-        function rgbToHsv(r, g, b) {
-            r /= 255; g /= 255; b /= 255;
-            let max = Math.max(r, g, b), min = Math.min(r, g, b);
-            let h, s, v = max;
-            let d = max - min;
-            s = max === 0 ? 0 : d / max;
-            if (max === min) {
-                h = 0; 
-            } else {
-                switch (max) {
-                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-                    case g: h = (b - r) / d + 2; break;
-                    case b: h = (r - g) / d + 4; break;
-                }
-                h /= 6;
-            }
-            return { h: h * 360, s: s * 100, v: v * 100 };
-        }
-
-        // 🛠️ 升級版：HSV 螢光綠 / 發光核心專用演算法
+        // 🛠️ FD5.1 雙重過曝白光與綠光暈色彩鎖定演算法：
         tracking.ColorTracker.registerColor('magic_red', function(r, g, b) {
-            let hsv = rgbToHsv(r, g, b);
-            
-            // 條件 1：HSV 色相落於綠色區間 (75° ~ 165°)，且具備一定飽和度與亮度
-            let isGreenHue = (hsv.h >= 75 && hsv.h <= 165) && (hsv.s >= 25) && (hsv.v >= 35);
-            
-            // 條件 2：LED 燈芯中心極高亮過曝白光（G 顯著維持最高，且三原色均偏極高）
-            let isGlowingWhiteCore = (g >= 200) && (r >= 140) && (b >= 140) && (g >= r) && (g >= b);
+            // 判定 1：過曝高亮 LED 發光燈芯核心 (純白/極亮綠白光，RGB 三值皆極高，且 G 不低於 R, B)
+            let isOverexposedCore = (r >= 210) && (g >= 210) && (b >= 210) && (g >= r - 10) && (g >= b - 10);
 
-            return isGreenHue || isGlowingWhiteCore;
+            // 判定 2：鮮豔綠色燈暈 (綠色 G 顯著高於 R 與 B)
+            let isGreenHalo = (g > 100) && (g > r * 1.25) && (g > b * 1.25);
+
+            return isOverexposedCore || isGreenHalo;
         });
 
         const wandTracker = new tracking.ColorTracker(['magic_red']);
-        wandTracker.setMinDimension(3); // 感應細小過曝核心
+        wandTracker.setMinDimension(2); // 感應超小高亮燈芯
 
         let trackerInitialized = false;
         function initTrackerAndAR() {
@@ -576,7 +565,7 @@
                 for (let i = 0; i < event.data.length; i++) {
                     let rect = event.data[i];
                     let aspect = rect.width / rect.height;
-                    // 過濾非圓形或過大的背景背景雜訊
+                    // 過濾非圓形或寬度大於畫面 35% 的雜訊
                     if (aspect > 0.4 && aspect < 2.0 && rect.width < (canvas.width * 0.35)) {
                         if (!validTarget || Math.abs(1 - aspect) < Math.abs(1 - (validTarget.width / validTarget.height))) {
                             validTarget = rect;
@@ -586,9 +575,9 @@
 
                 if (validTarget) {
                     crosshair.hasTracking = true;
-                    // 🛠️ 核心修正：將準星直接鎖定在捕捉區域「最上方 10% 的發光頂端」，徹底避開底座與手柄
+                    // 🛠️ 核心修正：鎖定在發光方框正中心，確保準星 100% 貼合發光 LED 頂端
                     crosshair.targetX = canvas.width - (validTarget.x + validTarget.width / 2);
-                    crosshair.targetY = validTarget.y + (validTarget.height * 0.10);
+                    crosshair.targetY = validTarget.y + (validTarget.height / 2);
 
                     if (gameState === 'drawing') {
                         checkWandPointCollision(crosshair.targetX, crosshair.targetY);
