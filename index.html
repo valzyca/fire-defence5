@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Kinetic Sorcery - 巫師火原素特訓 (FD5.2)</title>
+    <title>Kinetic Sorcery - 巫師火原素特訓 (FD5.3)</title>
     
     <!-- Google Fonts 史詩級魔法書寫與哥德風格字型 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -101,7 +101,7 @@
         .hp-hat-icon { width: 26px; height: 26px; object-fit: contain; transition: all 0.3s ease; filter: drop-shadow(0 0 4px #ffd700); }
         .hp-hat-lost { opacity: 0.15; filter: grayscale(1) drop-shadow(0 0 0px transparent); transform: scale(0.75); }
 
-        /* 畫面左下角版本標籤 - FD5.2 */
+        /* 畫面左下角版本標籤 - FD5.3 */
         #version-tag {
             position: absolute; bottom: 12px; left: 15px; z-index: 30;
             font-family: monospace, sans-serif; font-size: 12px; font-weight: bold;
@@ -150,7 +150,7 @@
     <video id="webcam" preload autoplay loop muted playsinline></video>
 
     <!-- 左下角版本標籤 -->
-    <div id="version-tag">FD5.2</div>
+    <div id="version-tag">FD5.3</div>
 
     <!-- 初始主畫面符文繪製層 -->
     <div id="start-screen">
@@ -435,7 +435,7 @@
                 startCtx.strokeStyle = '#00ffff'; startCtx.lineWidth = 8; startCtx.shadowBlur = 25; startCtx.shadowColor = '#00ffff';
                 startCtx.beginPath();
                 startCtx.moveTo(pentagramPoints[0].x, pentagramPoints[0].y);
-                for(let k=1; k<5; k++) startCtx.lineTo(pentagramPoints[k].y, pentagramPoints[k].y);
+                for(let k=1; k<5; k++) startCtx.lineTo(pentagramPoints[k].x, pentagramPoints[k].y);
                 startCtx.closePath(); startCtx.stroke();
                 startCtx.restore();
 
@@ -514,19 +514,19 @@
             }, 1000);
         }
 
-        // 🛠️ FD5.2 重構：綠色 LED 與過曝白光雙重動態鎖定演算法
+        // 🛠️ FD5.3 升級：綠色 LED 炫光與過曝核心「廣域聯動演算法」
         tracking.ColorTracker.registerColor('magic_red', function(r, g, b) {
-            // 條件 1：綠色絕對顯著性（G 顯著高於 R 與 B 1.35 倍以上，完全排除膚色與臉部反光）
-            let isGreenDominant = (g > 120) && (g > r * 1.35) && (g > b * 1.25);
+            // 判定 1：廣域綠色炫光/光暈 (綠色顯著高於紅色與藍色 1.2 倍以上，輕鬆涵蓋魔杖四周發散的綠芒)
+            let isGreenFlareHalo = (g > 90) && (g > r * 1.20) && (g > b * 1.20);
 
-            // 條件 2：高亮發光 LED 核心（高純度過曝極亮區塊：G >= 210, R >= 140, G >= R, G >= B）
-            let isGlowingCore = (g >= 210) && (r >= 140) && (g >= r) && (g >= b);
+            // 判定 2：過曝燈芯極亮中心 (RGB 純白高亮極值)
+            let isBrightCore = (r >= 200) && (g >= 200) && (b >= 200) && (g >= r - 15) && (g >= b - 15);
 
-            return isGreenDominant || isGlowingCore;
+            return isGreenFlareHalo || isBrightCore;
         });
 
         const wandTracker = new tracking.ColorTracker(['magic_red']);
-        wandTracker.setMinDimension(2); // 感應超小過曝高亮燈芯
+        wandTracker.setMinDimension(2); // 能敏銳捕捉任何微小光暈
 
         let trackerInitialized = false;
         function initTrackerAndAR() {
@@ -565,8 +565,8 @@
                 for (let i = 0; i < event.data.length; i++) {
                     let rect = event.data[i];
                     let aspect = rect.width / rect.height;
-                    // 🛠️ 嚴格尺寸過濾：限制區域寬度必須小於畫面寬度的 25%，防止抓到大面積臉部或背景反光
-                    if (aspect > 0.4 && aspect < 2.0 && rect.width < (canvas.width * 0.25)) {
+                    // 放寬長寬比與尺寸限制，允許捕捉發散的綠色炫光
+                    if (aspect > 0.3 && aspect < 2.5 && rect.width < (canvas.width * 0.45)) {
                         if (!validTarget || Math.abs(1 - aspect) < Math.abs(1 - (validTarget.width / validTarget.height))) {
                             validTarget = rect;
                         }
@@ -575,7 +575,7 @@
 
                 if (validTarget) {
                     crosshair.hasTracking = true;
-                    // 🛠️ 鎖定正中心發光核心，精準貼合 LED 頂端
+                    // 🛠️ 廣域光暈中心吸附：鎖定在綠色炫光涵蓋區域的極致中心
                     crosshair.targetX = canvas.width - (validTarget.x + validTarget.width / 2);
                     crosshair.targetY = validTarget.y + (validTarget.height / 2);
 
