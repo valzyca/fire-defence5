@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Kinetic Sorcery - 巫師火原素特訓 (FD5.4)</title>
+    <title>Kinetic Sorcery - 巫師火原素特訓 (FD6.0)</title>
     
     <!-- Google Fonts 史詩級魔法書寫與哥德風格字型 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -101,7 +101,7 @@
         .hp-hat-icon { width: 26px; height: 26px; object-fit: contain; transition: all 0.3s ease; filter: drop-shadow(0 0 4px #ffd700); }
         .hp-hat-lost { opacity: 0.15; filter: grayscale(1) drop-shadow(0 0 0px transparent); transform: scale(0.75); }
 
-        /* 畫面左下角版本標籤 - FD5.4 */
+        /* 畫面左下角版本標籤 - FD6.0 */
         #version-tag {
             position: absolute; bottom: 12px; left: 15px; z-index: 30;
             font-family: monospace, sans-serif; font-size: 12px; font-weight: bold;
@@ -150,7 +150,7 @@
     <video id="webcam" preload autoplay loop muted playsinline></video>
 
     <!-- 左下角版本標籤 -->
-    <div id="version-tag">FD5.4</div>
+    <div id="version-tag">FD6.0</div>
 
     <!-- 初始主畫面符文繪製層 -->
     <div id="start-screen">
@@ -176,7 +176,7 @@
     <div id="instruction">
         <strong id="ritual-title" style="color: #ff4500; display: block; text-align: center; font-size: 15px;">巫師火原素特訓：巨龍逆襲戰</strong>
         <ul id="ritual-rules">
-            <li><strong>火球攔截：</strong>手持綠色 LED 魔杖擊落火球。</li>
+            <li><strong>火球攔截：</strong>手持發光 LED 魔杖擊落火球。</li>
             <li><strong>帽體閃避：</strong>擺動身體控制巫師帽進行閃避。</li>
             <li><strong>生命界限：</strong>火球落地、觸碰帽體或被射線擊中均會損失 1 頂巫師帽，滿 5 次則特訓結束。</li>
         </ul>
@@ -293,7 +293,7 @@
             instructionBox.querySelector('ul').style.display = 'none';
             
             let clickPrompt = instructionBox.querySelector('.prompt-click-text');
-            clickPrompt.innerText = "請手持綠色 LED 魔杖，依序滑過圓圈上的藍色魔法亮點來構造連線！";
+            clickPrompt.innerText = "請手持發光 LED 魔杖，依序滑過圓圈上的藍色魔法亮點來構造連線！";
             clickPrompt.style.textAlign = "center";
 
             initTrackerAndAR();
@@ -514,19 +514,17 @@
             }, 1000);
         }
 
-        // 🛠️ FD5.4 廣域高亮 LED 與螢光綠色特徵雙重鎖定演算法：
+        // 🛠️ FD6.0 徹底重構：忽略顏色，採用「全亮灰階極高光源判定（Luminance Peak Tracking）」
         tracking.ColorTracker.registerColor('magic_red', function(r, g, b) {
-            // 判定 1：綠色極致顯著（G 強烈高於 R, B，排除一切膚色與暖光背景）
-            let isGreenDominant = (g > 100) && (g > r * 1.15) && (g > b * 1.10);
-
-            // 判定 2：LED 燈芯超高亮白光（總亮度大於 600，且 G 不落後）
-            let isHighLuminanceCore = (r + g + b > 580) && (g >= r - 20) && (g >= b - 20);
-
-            return isGreenDominant || isHighLuminanceCore;
+            // 計算廣電標準加權灰階亮度 Luminance
+            let luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+            
+            // 只要灰階亮度極高（> 215，全畫面最亮的發光 LED 核心），不論顏色直接判定為魔杖！
+            return luminance > 215;
         });
 
         const wandTracker = new tracking.ColorTracker(['magic_red']);
-        wandTracker.setMinDimension(2);
+        wandTracker.setMinDimension(2); // 能敏銳抓取超小亮點
 
         let trackerInitialized = false;
         function initTrackerAndAR() {
@@ -565,9 +563,10 @@
                 for (let i = 0; i < event.data.length; i++) {
                     let rect = event.data[i];
                     let aspect = rect.width / rect.height;
-                    if (aspect > 0.3 && aspect < 2.5 && rect.width < (video.videoWidth * 0.5)) {
+                    // 限定面積尺寸，避免大面積的天花板燈具或白色牆面誤判
+                    if (aspect > 0.3 && aspect < 2.5 && rect.width < (video.videoWidth * 0.35)) {
                         if (!validTarget || (rect.width * rect.height < validTarget.width * validTarget.height)) {
-                            validTarget = rect; // 優先選取更集中、精確的 LED 光點
+                            validTarget = rect; // 優先選取更集中、精確的 LED 發光點
                         }
                     }
                 }
@@ -575,7 +574,7 @@
                 if (validTarget) {
                     crosshair.hasTracking = true;
 
-                    // 🛠️ FD5.4 座標投影計算：重構相機鏡頭 cover 縮放時的絕對 Y 軸對齊
+                    // FD6.0 幾何與解析度映射校正
                     let vW = video.videoWidth || 640;
                     let vH = video.videoHeight || 480;
                     let cW = canvas.width;
@@ -587,12 +586,11 @@
                     let offsetX = (renderW - cW) / 2;
                     let offsetY = (renderH - cH) / 2;
 
-                    // 轉換鏡頭原生像素為螢幕實際幾何座標
                     let rawX = validTarget.x + validTarget.width / 2;
                     let rawY = validTarget.y + validTarget.height / 2;
 
                     crosshair.targetX = cW - (rawX * scale - offsetX); // 鏡頭水平鏡像
-                    crosshair.targetY = rawY * scale - offsetY;        // 垂直準確映射
+                    crosshair.targetY = rawY * scale - offsetY;        // 垂直精準映射
 
                     if (gameState === 'drawing') {
                         checkWandPointCollision(crosshair.targetX, crosshair.targetY);
