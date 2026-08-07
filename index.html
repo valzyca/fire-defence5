@@ -165,7 +165,7 @@
     <div id="instruction">
         <strong id="ritual-title" style="color: #ff4500; display: block; text-align: center; font-size: 15px;">巫師火原素特訓：巨龍逆襲戰</strong>
         <ul id="ritual-rules">
-            <li><strong>火球攔截：</strong>手持冰藍色 LED 魔杖擊落火球。</li>
+            <li><strong>火球攔截：</strong>手持綠色 LED 魔杖擊落火球。</li>
             <li><strong>帽體閃避：</strong>擺動身體控制巫師帽進行閃避。</li>
             <li><strong>生命界限：</strong>火球落地、觸碰帽體或被射線擊中均會損失 1 頂巫師帽，滿 5 次則特訓結束。</li>
         </ul>
@@ -282,7 +282,7 @@
             instructionBox.querySelector('ul').style.display = 'none';
             
             let clickPrompt = instructionBox.querySelector('.prompt-click-text');
-            clickPrompt.innerText = "請手持冰藍色 LED 魔杖，依序滑過圓圈上的藍色魔法亮點來構造連線！";
+            clickPrompt.innerText = "請手持綠色 LED 魔杖，依序滑過圓圈上的藍色魔法亮點來構造連線！";
             clickPrompt.style.textAlign = "center";
 
             initTrackerAndAR();
@@ -503,21 +503,18 @@
             }, 1000);
         }
 
-        // 🛠️ 專為冰藍色發光 LED 調整的追蹤演算法：
-        // 冰藍色（Cyan/Ice Blue）：綠(G)與藍(B)非常高，且遠大於紅(R)。
-        // 同時允許核心發光白光（RGB 都極高）。
+        // 🛠️ 專為照片中的「螢光綠 LED 燈泡」優化的色彩追蹤演算法：
+        // 1. 綠色 G 成份遠高於 R 與 B（G > R * 1.4 且 G > B * 1.3）
+        // 2. 允許核心發光白光（G > 210, R > 150, B > 150 且 G 依然維持最亮）
         tracking.ColorTracker.registerColor('magic_red', function(r, g, b) {
-            // 冰藍色特徵：藍色和綠色顯著高於紅色（B > 130, G > 120, 且 B,G 高於 R）
-            let isIceBlue = (b > 130) && (g > 120) && (b > r + 15) && (g > r + 10);
+            let isGreenDominant = (g > 110) && (g > r * 1.35) && (g > b * 1.25);
+            let isGlowingGreenCore = (g > 200) && (r > 140) && (b > 140) && (g >= r) && (g >= b);
             
-            // LED 核心發光過曝（極亮白藍光，R,G,B 均很高但以 B,G 為主）
-            let isGlowingCore = (b > 210) && (g > 200) && (r > 160);
-
-            return isIceBlue || isGlowingCore;
+            return isGreenDominant || isGlowingGreenCore;
         });
 
         const wandTracker = new tracking.ColorTracker(['magic_red']);
-        wandTracker.setMinDimension(3); // 設定感應面積門檻
+        wandTracker.setMinDimension(3); // 感應細小高亮核心
 
         let trackerInitialized = false;
         function initTrackerAndAR() {
@@ -556,7 +553,6 @@
                 for (let i = 0; i < event.data.length; i++) {
                     let rect = event.data[i];
                     let aspect = rect.width / rect.height;
-                    // 過濾掉過大的背景雜訊，只抓合適尺寸的 LED 光點
                     if (aspect > 0.5 && aspect < 1.8 && rect.width < (canvas.width * 0.35)) {
                         if (!validTarget || Math.abs(1 - aspect) < Math.abs(1 - (validTarget.width / validTarget.height))) {
                             validTarget = rect;
@@ -566,9 +562,9 @@
 
                 if (validTarget) {
                     crosshair.hasTracking = true;
-                    // 🛠️ 重心精準優化：針對 LED 燈泡「上方發光頂端」修正，偏向矩形頂部，避開下方白色接頭
+                    // 🛠️ 準星鎖定優化：鎖定在捕捉方框的「上方 20% 位置」，精準貼合綠光 LED 燈泡頂端
                     crosshair.targetX = canvas.width - (validTarget.x + validTarget.width / 2);
-                    crosshair.targetY = validTarget.y + (validTarget.height * 0.25); // 鎖定在上 1/4 的發光頂端
+                    crosshair.targetY = validTarget.y + (validTarget.height * 0.20);
 
                     if (gameState === 'drawing') {
                         checkWandPointCollision(crosshair.targetX, crosshair.targetY);
