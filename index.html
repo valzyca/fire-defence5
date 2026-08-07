@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Kinetic Sorcery - 巫師火原素特訓 (FD5.3)</title>
+    <title>Kinetic Sorcery - 巫師火原素特訓 (FD5.4)</title>
     
     <!-- Google Fonts 史詩級魔法書寫與哥德風格字型 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -101,7 +101,7 @@
         .hp-hat-icon { width: 26px; height: 26px; object-fit: contain; transition: all 0.3s ease; filter: drop-shadow(0 0 4px #ffd700); }
         .hp-hat-lost { opacity: 0.15; filter: grayscale(1) drop-shadow(0 0 0px transparent); transform: scale(0.75); }
 
-        /* 畫面左下角版本標籤 - FD5.3 */
+        /* 畫面左下角版本標籤 - FD5.4 */
         #version-tag {
             position: absolute; bottom: 12px; left: 15px; z-index: 30;
             font-family: monospace, sans-serif; font-size: 12px; font-weight: bold;
@@ -150,7 +150,7 @@
     <video id="webcam" preload autoplay loop muted playsinline></video>
 
     <!-- 左下角版本標籤 -->
-    <div id="version-tag">FD5.3</div>
+    <div id="version-tag">FD5.4</div>
 
     <!-- 初始主畫面符文繪製層 -->
     <div id="start-screen">
@@ -514,19 +514,19 @@
             }, 1000);
         }
 
-        // 🛠️ FD5.3 升級：綠色 LED 炫光與過曝核心「廣域聯動演算法」
+        // 🛠️ FD5.4 廣域高亮 LED 與螢光綠色特徵雙重鎖定演算法：
         tracking.ColorTracker.registerColor('magic_red', function(r, g, b) {
-            // 判定 1：廣域綠色炫光/光暈 (綠色顯著高於紅色與藍色 1.2 倍以上，輕鬆涵蓋魔杖四周發散的綠芒)
-            let isGreenFlareHalo = (g > 90) && (g > r * 1.20) && (g > b * 1.20);
+            // 判定 1：綠色極致顯著（G 強烈高於 R, B，排除一切膚色與暖光背景）
+            let isGreenDominant = (g > 100) && (g > r * 1.15) && (g > b * 1.10);
 
-            // 判定 2：過曝燈芯極亮中心 (RGB 純白高亮極值)
-            let isBrightCore = (r >= 200) && (g >= 200) && (b >= 200) && (g >= r - 15) && (g >= b - 15);
+            // 判定 2：LED 燈芯超高亮白光（總亮度大於 600，且 G 不落後）
+            let isHighLuminanceCore = (r + g + b > 580) && (g >= r - 20) && (g >= b - 20);
 
-            return isGreenFlareHalo || isBrightCore;
+            return isGreenDominant || isHighLuminanceCore;
         });
 
         const wandTracker = new tracking.ColorTracker(['magic_red']);
-        wandTracker.setMinDimension(2); // 能敏銳捕捉任何微小光暈
+        wandTracker.setMinDimension(2);
 
         let trackerInitialized = false;
         function initTrackerAndAR() {
@@ -565,19 +565,34 @@
                 for (let i = 0; i < event.data.length; i++) {
                     let rect = event.data[i];
                     let aspect = rect.width / rect.height;
-                    // 放寬長寬比與尺寸限制，允許捕捉發散的綠色炫光
-                    if (aspect > 0.3 && aspect < 2.5 && rect.width < (canvas.width * 0.45)) {
-                        if (!validTarget || Math.abs(1 - aspect) < Math.abs(1 - (validTarget.width / validTarget.height))) {
-                            validTarget = rect;
+                    if (aspect > 0.3 && aspect < 2.5 && rect.width < (video.videoWidth * 0.5)) {
+                        if (!validTarget || (rect.width * rect.height < validTarget.width * validTarget.height)) {
+                            validTarget = rect; // 優先選取更集中、精確的 LED 光點
                         }
                     }
                 }
 
                 if (validTarget) {
                     crosshair.hasTracking = true;
-                    // 🛠️ 廣域光暈中心吸附：鎖定在綠色炫光涵蓋區域的極致中心
-                    crosshair.targetX = canvas.width - (validTarget.x + validTarget.width / 2);
-                    crosshair.targetY = validTarget.y + (validTarget.height / 2);
+
+                    // 🛠️ FD5.4 座標投影計算：重構相機鏡頭 cover 縮放時的絕對 Y 軸對齊
+                    let vW = video.videoWidth || 640;
+                    let vH = video.videoHeight || 480;
+                    let cW = canvas.width;
+                    let cH = canvas.height;
+
+                    let scale = Math.max(cW / vW, cH / vH);
+                    let renderW = vW * scale;
+                    let renderH = vH * scale;
+                    let offsetX = (renderW - cW) / 2;
+                    let offsetY = (renderH - cH) / 2;
+
+                    // 轉換鏡頭原生像素為螢幕實際幾何座標
+                    let rawX = validTarget.x + validTarget.width / 2;
+                    let rawY = validTarget.y + validTarget.height / 2;
+
+                    crosshair.targetX = cW - (rawX * scale - offsetX); // 鏡頭水平鏡像
+                    crosshair.targetY = rawY * scale - offsetY;        // 垂直準確映射
 
                     if (gameState === 'drawing') {
                         checkWandPointCollision(crosshair.targetX, crosshair.targetY);
