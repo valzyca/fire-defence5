@@ -503,18 +503,41 @@
             }, 1000);
         }
 
-        // 🛠️ 專為照片中的「螢光綠 LED 燈泡」優化的色彩追蹤演算法：
-        // 1. 綠色 G 成份遠高於 R 與 B（G > R * 1.4 且 G > B * 1.3）
-        // 2. 允許核心發光白光（G > 210, R > 150, B > 150 且 G 依然維持最亮）
+        // 🛠️ 輔助函式：RGB 轉 HSV 色彩空間
+        function rgbToHsv(r, g, b) {
+            r /= 255; g /= 255; b /= 255;
+            let max = Math.max(r, g, b), min = Math.min(r, g, b);
+            let h, s, v = max;
+            let d = max - min;
+            s = max === 0 ? 0 : d / max;
+            if (max === min) {
+                h = 0; 
+            } else {
+                switch (max) {
+                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                    case g: h = (b - r) / d + 2; break;
+                    case b: h = (r - g) / d + 4; break;
+                }
+                h /= 6;
+            }
+            return { h: h * 360, s: s * 100, v: v * 100 };
+        }
+
+        // 🛠️ 升級版：HSV 螢光綠 / 發光核心專用演算法
         tracking.ColorTracker.registerColor('magic_red', function(r, g, b) {
-            let isGreenDominant = (g > 110) && (g > r * 1.35) && (g > b * 1.25);
-            let isGlowingGreenCore = (g > 200) && (r > 140) && (b > 140) && (g >= r) && (g >= b);
+            let hsv = rgbToHsv(r, g, b);
             
-            return isGreenDominant || isGlowingGreenCore;
+            // 條件 1：HSV 色相落於綠色區間 (75° ~ 165°)，且具備一定飽和度與亮度
+            let isGreenHue = (hsv.h >= 75 && hsv.h <= 165) && (hsv.s >= 25) && (hsv.v >= 35);
+            
+            // 條件 2：LED 燈芯中心極高亮過曝白光（G 顯著維持最高，且三原色均偏極高）
+            let isGlowingWhiteCore = (g >= 200) && (r >= 140) && (b >= 140) && (g >= r) && (g >= b);
+
+            return isGreenHue || isGlowingWhiteCore;
         });
 
         const wandTracker = new tracking.ColorTracker(['magic_red']);
-        wandTracker.setMinDimension(3); // 感應細小高亮核心
+        wandTracker.setMinDimension(3); // 感應細小過曝核心
 
         let trackerInitialized = false;
         function initTrackerAndAR() {
@@ -553,7 +576,8 @@
                 for (let i = 0; i < event.data.length; i++) {
                     let rect = event.data[i];
                     let aspect = rect.width / rect.height;
-                    if (aspect > 0.5 && aspect < 1.8 && rect.width < (canvas.width * 0.35)) {
+                    // 過濾非圓形或過大的背景背景雜訊
+                    if (aspect > 0.4 && aspect < 2.0 && rect.width < (canvas.width * 0.35)) {
                         if (!validTarget || Math.abs(1 - aspect) < Math.abs(1 - (validTarget.width / validTarget.height))) {
                             validTarget = rect;
                         }
@@ -562,9 +586,9 @@
 
                 if (validTarget) {
                     crosshair.hasTracking = true;
-                    // 🛠️ 準星鎖定優化：鎖定在捕捉方框的「上方 20% 位置」，精準貼合綠光 LED 燈泡頂端
+                    // 🛠️ 核心修正：將準星直接鎖定在捕捉區域「最上方 10% 的發光頂端」，徹底避開底座與手柄
                     crosshair.targetX = canvas.width - (validTarget.x + validTarget.width / 2);
-                    crosshair.targetY = validTarget.y + (validTarget.height * 0.20);
+                    crosshair.targetY = validTarget.y + (validTarget.height * 0.10);
 
                     if (gameState === 'drawing') {
                         checkWandPointCollision(crosshair.targetX, crosshair.targetY);
