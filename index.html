@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Kinetic Sorcery - 巫師火原素特訓 (FD6.7)</title>
+    <title>Kinetic Sorcery - 巫師火原素特訓 (FD6.8)</title>
     
     <!-- Google Fonts 史詩級魔法書寫與哥德風格字型 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -100,7 +100,7 @@
         .hp-hat-icon { width: 26px; height: 26px; object-fit: contain; transition: all 0.3s ease; filter: drop-shadow(0 0 4px #ffd700); }
         .hp-hat-lost { opacity: 0.15; filter: grayscale(1) drop-shadow(0 0 0px transparent); transform: scale(0.75); }
 
-        /* 畫面左下角版本標籤 - FD6.7 */
+        /* 畫面左下角版本標籤 - FD6.8 */
         #version-tag {
             position: absolute; bottom: 12px; left: 15px; z-index: 30;
             font-family: monospace, sans-serif; font-size: 12px; font-weight: bold;
@@ -186,7 +186,7 @@
     <video id="webcam" preload autoplay loop muted playsinline></video>
 
     <!-- 左下角版本標籤 -->
-    <div id="version-tag">FD6.7</div>
+    <div id="version-tag">FD6.8</div>
 
     <!-- 🛠️ FD6.7 新增：除錯開關與面板 -->
     <div id="debug-toggle-btn" onclick="toggleDebugPanel()">除錯 OFF</div>
@@ -316,6 +316,9 @@
 
         // 火球加成速度變數
         let fireballSpeedBonus = 0;
+        // 🛠️ FD6.8 調整：原本每次噴火加 2.5（相對基礎速度 1.8 幾乎翻倍過快），改為漸進式增加並設上限
+        const FIREBALL_SPEED_INCREMENT = 1.0;  // 每次噴火後增加的速度，數字越小加速越平緩
+        const FIREBALL_SPEED_MAX_BONUS = 7.0;  // 加速上限，避免後期火球快到無法反應
 
         // 🛠️ FD6.7 新增：LED 追蹤可調參數 + 除錯面板控制
         let LED_G_THRESHOLD = 130;   // 綠色亮度門檻，抓不到請調低（例如 80~100）
@@ -907,7 +910,7 @@
                     dragonBoss.stateTimer = Math.random() * 100 + 100;
                     dragonBoss.shootCooldown = 0; 
                     dragonLaser.active = false;
-                    fireballSpeedBonus += 2.5;
+                    fireballSpeedBonus = Math.min(fireballSpeedBonus + FIREBALL_SPEED_INCREMENT, FIREBALL_SPEED_MAX_BONUS);
                 }
             }
         }
