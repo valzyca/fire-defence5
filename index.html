@@ -3,15 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Kinetic Sorcery - 巫師火原素特訓 (FD6.0)</title>
+    <title>Kinetic Sorcery - 巫師火原素特訓 (FD6.1)</title>
     
     <!-- Google Fonts 史詩級魔法書寫與哥德風格字型 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=UnfrakturMaguntia&display=swap" rel="stylesheet">
     
-    <!-- 引入核心的顏色追蹤庫 與 官方 MediaPipe 臉部網格庫 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tracking.js/1.1.3/tracking-min.js"></script>
+    <!-- 引入官方 MediaPipe 臉部網格庫 -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
     <style>
@@ -101,7 +100,7 @@
         .hp-hat-icon { width: 26px; height: 26px; object-fit: contain; transition: all 0.3s ease; filter: drop-shadow(0 0 4px #ffd700); }
         .hp-hat-lost { opacity: 0.15; filter: grayscale(1) drop-shadow(0 0 0px transparent); transform: scale(0.75); }
 
-        /* 畫面左下角版本標籤 - FD6.0 */
+        /* 畫面左下角版本標籤 - FD6.1 */
         #version-tag {
             position: absolute; bottom: 12px; left: 15px; z-index: 30;
             font-family: monospace, sans-serif; font-size: 12px; font-weight: bold;
@@ -150,7 +149,7 @@
     <video id="webcam" preload autoplay loop muted playsinline></video>
 
     <!-- 左下角版本標籤 -->
-    <div id="version-tag">FD6.0</div>
+    <div id="version-tag">FD6.1</div>
 
     <!-- 初始主畫面符文繪製層 -->
     <div id="start-screen">
@@ -222,6 +221,10 @@
         const startBtn = document.getElementById('start-ritual-btn');
         const instructionBox = document.getElementById('instruction');
 
+        // 隱藏輔助畫布：專門用來抽取當前已呈現的真實影像像素
+        const sampleCanvas = document.createElement('canvas');
+        const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+
         let gameStarted = false;
         let scoreSuccess = 0;
         let scoreFailed = 0; 
@@ -247,7 +250,7 @@
         let hatImg = new Image(); hatImg.src = "CIC-hat.png";
         let dragonBoss = { x: 0, y: 50, width: 140, height: 140, speedX: 2.5, state: 'move', stateTimer: 120, shootCooldown: 0 };
         let dragonLaser = { active: false, x: 0, topY: 0, width: 35 };
-        let userHatAR = { x: 0, y: 0, width: 110, height: 110, tracked: false, ivX: 0, ivY: 0 };
+        let userHatAR = { x: 0, y: 0, width: 110, height: 110, tracked: false, ivX: 0, ivY: 0, faceBounds: null };
         let invulnerableTimer = 0;
 
         // 火球加成速度變數
@@ -514,17 +517,96 @@
             }, 1000);
         }
 
-        // 🛠️ FD6.0 徹底重構：忽略顏色，採用「全亮灰階極高光源判定（Luminance Peak Tracking）」
-        tracking.ColorTracker.registerColor('magic_red', function(r, g, b) {
-            // 計算廣電標準加權灰階亮度 Luminance
-            let luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-            
-            // 只要灰階亮度極高（> 215，全畫面最亮的發光 LED 核心），不論顏色直接判定為魔杖！
-            return luminance > 215;
-        });
+        // 🛠️ FD6.1 重構：完全自主像素分析，精準尋找螢幕已呈現影像中的發光 LED 光源
+        function processLuminancePeakTracking() {
+            if (!video.videoWidth || video.readyState < 2) return;
 
-        const wandTracker = new tracking.ColorTracker(['magic_red']);
-        wandTracker.setMinDimension(2); // 能敏銳抓取超小亮點
+            let sampleW = 320;
+            let sampleH = Math.round(320 * (window.innerHeight / window.innerWidth));
+            
+            sampleCanvas.width = sampleW;
+            sampleCanvas.height = sampleH;
+
+            // 繪製與 CSS 同步的鏡像與填滿畫面
+            sampleCtx.save();
+            sampleCtx.translate(sampleW, 0);
+            sampleCtx.scale(-1, 1);
+            
+            let vW = video.videoWidth;
+            let vH = video.videoHeight;
+            let scale = Math.max(sampleW / vW, sampleH / vH);
+            let rW = vW * scale;
+            let rH = vH * scale;
+            let offX = (rW - sampleW) / 2;
+            let offY = (rH - sampleH) / 2;
+
+            sampleCtx.drawImage(video, -offX, -offY, rW, rH);
+            sampleCtx.restore();
+
+            let imgData = sampleCtx.getImageData(0, 0, sampleW, sampleH);
+            let data = imgData.data;
+
+            let maxLum = 0;
+            let peakX = -1, peakY = -1;
+            let sumX = 0, sumY = 0, count = 0;
+
+            for (let y = 0; y < sampleH; y += 2) {
+                for (let x = 0; x < sampleW; x += 2) {
+                    let idx = (y * sampleW + x) * 4;
+                    let r = data[idx];
+                    let g = data[idx + 1];
+                    let b = data[idx + 2];
+
+                    let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+
+                    // 避開 MediaPipe 檢測到的頭部與眼鏡區域
+                    if (userHatAR.faceBounds) {
+                        let relX = x / sampleW;
+                        let relY = y / sampleH;
+                        if (relX > userHatAR.faceBounds.left && relX < userHatAR.faceBounds.right &&
+                            relY > userHatAR.faceBounds.top && relY < userHatAR.faceBounds.bottom) {
+                            continue; // 跳過臉部
+                        }
+                    }
+
+                    // 捕捉極高亮度（>220）發光核心
+                    if (lum > 220) {
+                        sumX += x;
+                        sumY += y;
+                        count++;
+                        if (lum > maxLum) {
+                            maxLum = lum;
+                            peakX = x;
+                            peakY = y;
+                        }
+                    }
+                }
+            }
+
+            if (count > 0 && peakX !== -1) {
+                crosshair.hasTracking = true;
+                // 將采樣點座標直接 1:1 投影到真正的全螢幕 Canvas 幾何座標
+                let targetX = (sumX / count) * (canvas.width / sampleW);
+                let targetY = (sumY / count) * (canvas.height / sampleH);
+
+                crosshair.targetX = targetX;
+                crosshair.targetY = targetY;
+
+                if (gameState === 'drawing') {
+                    checkWandPointCollision(crosshair.targetX, crosshair.targetY);
+                }
+
+                if (gameState === 'ready') {
+                    let btnRect = startBtn.getBoundingClientRect();
+                    if (crosshair.targetX > btnRect.left && crosshair.targetX < btnRect.right &&
+                        crosshair.targetY > btnRect.top && crosshair.targetY < btnRect.bottom) {
+                        startCountdownFlow();
+                    }
+                }
+            } else {
+                crosshair.hasTracking = false;
+            }
+        }
 
         let trackerInitialized = false;
         function initTrackerAndAR() {
@@ -533,12 +615,7 @@
 
             const videoConstraints = {
                 audio: false,
-                video: { 
-                    facingMode: "user", 
-                    width: { ideal: 640 }, 
-                    height: { ideal: 480 },
-                    frameRate: { ideal: 30 }
-                }
+                video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
             };
 
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -550,63 +627,6 @@
                         navigator.mediaDevices.getUserMedia({ video: true }).then(function(stream) { video.srcObject = stream; });
                     });
             }
-
-            tracking.track('#webcam', wandTracker);
-
-            wandTracker.on('track', function(event) {
-                if (isGameOver || event.data.length === 0) {
-                    crosshair.hasTracking = false;
-                    return;
-                }
-                
-                let validTarget = null;
-                for (let i = 0; i < event.data.length; i++) {
-                    let rect = event.data[i];
-                    let aspect = rect.width / rect.height;
-                    // 限定面積尺寸，避免大面積的天花板燈具或白色牆面誤判
-                    if (aspect > 0.3 && aspect < 2.5 && rect.width < (video.videoWidth * 0.35)) {
-                        if (!validTarget || (rect.width * rect.height < validTarget.width * validTarget.height)) {
-                            validTarget = rect; // 優先選取更集中、精確的 LED 發光點
-                        }
-                    }
-                }
-
-                if (validTarget) {
-                    crosshair.hasTracking = true;
-
-                    // FD6.0 幾何與解析度映射校正
-                    let vW = video.videoWidth || 640;
-                    let vH = video.videoHeight || 480;
-                    let cW = canvas.width;
-                    let cH = canvas.height;
-
-                    let scale = Math.max(cW / vW, cH / vH);
-                    let renderW = vW * scale;
-                    let renderH = vH * scale;
-                    let offsetX = (renderW - cW) / 2;
-                    let offsetY = (renderH - cH) / 2;
-
-                    let rawX = validTarget.x + validTarget.width / 2;
-                    let rawY = validTarget.y + validTarget.height / 2;
-
-                    crosshair.targetX = cW - (rawX * scale - offsetX); // 鏡頭水平鏡像
-                    crosshair.targetY = rawY * scale - offsetY;        // 垂直精準映射
-
-                    if (gameState === 'drawing') {
-                        checkWandPointCollision(crosshair.targetX, crosshair.targetY);
-                    }
-
-                    if (gameState === 'ready') {
-                        let btnRect = startBtn.getBoundingClientRect();
-                        if (crosshair.targetX > btnRect.left && crosshair.targetX < btnRect.right &&
-                            crosshair.targetY > btnRect.top && crosshair.targetY < btnRect.bottom) {
-                            startCountdownFlow();
-                        }
-                    }
-                } else {
-                    crosshair.hasTracking = false;
-                }
-            });
 
             const faceMesh = new FaceMesh({
                 locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
@@ -632,12 +652,25 @@
         function onARFaceMeshResults(results) {
             if (isGameOver || !results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
                 userHatAR.tracked = false;
+                userHatAR.faceBounds = null;
                 return;
             }
             const landmarks = results.multiFaceLandmarks[0];
             userHatAR.tracked = true;
             userHatAR.ivX = (1 - landmarks[10].x) * canvas.width;
             userHatAR.ivY = landmarks[10].y * canvas.height - (canvas.height * 0.12);
+
+            // 計算臉部避讓邊界 (Normalized Scale)
+            let minX = 1, maxX = 0, minY = 1, maxY = 0;
+            for (let i = 0; i < landmarks.length; i += 5) {
+                let x = 1 - landmarks[i].x; // 鏡像
+                let y = landmarks[i].y;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+            userHatAR.faceBounds = { left: minX, right: maxX, top: minY, bottom: maxY };
         }
 
         function spawnFireball() {
@@ -758,6 +791,11 @@
                 canvas.height = window.innerHeight;
             }
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 每影格進行 1:1 實時高亮光點像素追蹤
+            if (gameState === 'drawing' || gameState === 'ready' || gameState === 'playing') {
+                processLuminancePeakTracking();
+            }
 
             if (gameStarted || isGameOver || gameState === 'ready' || gameState === 'drawing') {
                 if (invulnerableTimer > 0) invulnerableTimer--;
