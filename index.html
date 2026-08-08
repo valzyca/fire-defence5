@@ -839,7 +839,8 @@
             const landmarks = results.multiFaceLandmarks[0];
             userHatAR.tracked = true;
             userHatAR.ivX = (1 - landmarks[10].x) * canvas.width;
-            userHatAR.ivY = landmarks[10].y * canvas.height - (canvas.height * 0.12);
+            // 🛠️ FD6.7 調整：偏移量從 0.12 縮小為 0.045，讓帽子貼近額頭中間，不再懸空過高
+            userHatAR.ivY = landmarks[10].y * canvas.height - (canvas.height * 0.045);
         }
 
         function spawnFireball() {
