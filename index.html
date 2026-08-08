@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Kinetic Sorcery - 巫師火原素特訓 (FD6.6)</title>
+    <title>Kinetic Sorcery - 巫師火原素特訓 (FD6.7)</title>
     
     <!-- Google Fonts 史詩級魔法書寫與哥德風格字型 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -100,7 +100,7 @@
         .hp-hat-icon { width: 26px; height: 26px; object-fit: contain; transition: all 0.3s ease; filter: drop-shadow(0 0 4px #ffd700); }
         .hp-hat-lost { opacity: 0.15; filter: grayscale(1) drop-shadow(0 0 0px transparent); transform: scale(0.75); }
 
-        /* 畫面左下角版本標籤 - FD6.6 */
+        /* 畫面左下角版本標籤 - FD6.7 */
         #version-tag {
             position: absolute; bottom: 12px; left: 15px; z-index: 30;
             font-family: monospace, sans-serif; font-size: 12px; font-weight: bold;
@@ -141,6 +141,43 @@
             100% { transform: translate(0px, 0px) rotate(0deg); }
         }
         .shake-effect { animation: shake 0.3s ease-in-out; }
+
+        /* 🛠️ FD6.7 新增：LED 追蹤除錯面板 */
+        #tracking-debug-panel {
+            display: none; position: absolute; top: 10px; left: 10px; z-index: 50;
+            background: rgba(0,0,0,0.75); color: #0f0; font-family: monospace; font-size: 13px;
+            padding: 10px 14px; border-radius: 8px; border: 1px solid #0f0; line-height: 1.6;
+            pointer-events: auto; min-width: 220px;
+        }
+        #tracking-debug-panel .row { display: flex; justify-content: space-between; gap: 12px; }
+        #tracking-debug-panel .hit { color: #00ff88; font-weight: bold; }
+        #tracking-debug-panel .miss { color: #ff5555; }
+        #tracking-debug-panel input[type="range"] { width: 100%; }
+        #tracking-debug-panel label { display: block; margin-top: 6px; color: #aaffaa; }
+        #debug-toggle-btn {
+            position: absolute; top: 10px; right: 10px; z-index: 50;
+            background: rgba(0,0,0,0.6); color: #0f0; border: 1px solid #0f0; border-radius: 6px;
+            font-family: monospace; font-size: 12px; padding: 6px 10px; cursor: pointer; pointer-events: auto;
+        }
+
+        /* 🛠️ FD6.7 新增：攝影機錯誤提示畫面 */
+        #camera-error-screen {
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 60;
+            background: rgba(0, 0, 0, 0.94); flex-direction: column; justify-content: center; align-items: center;
+            text-align: center; padding: 30px; box-sizing: border-box; pointer-events: auto;
+        }
+        #camera-error-icon { font-size: 56px; margin-bottom: 16px; }
+        #camera-error-title { color: #ff4500; font-size: 22px; font-weight: bold; margin-bottom: 14px; letter-spacing: 1px; }
+        #camera-error-detail { color: #eee; font-size: 15px; line-height: 1.8; max-width: 480px; margin-bottom: 10px; white-space: pre-line; }
+        #camera-error-solution {
+            color: #00d2ff; font-size: 14px; line-height: 1.8; max-width: 480px; margin-top: 14px;
+            border: 1px solid #00d2ff; border-radius: 10px; padding: 14px 18px; text-align: left; white-space: pre-line;
+        }
+        #camera-error-retry {
+            margin-top: 24px; background: linear-gradient(135deg, #00d2ff 0%, #0066aa 100%); color: #fff;
+            font-size: 16px; font-weight: bold; padding: 10px 32px; border-radius: 24px; border: 2px solid #ffffff44;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -149,7 +186,19 @@
     <video id="webcam" preload autoplay loop muted playsinline></video>
 
     <!-- 左下角版本標籤 -->
-    <div id="version-tag">FD6.6</div>
+    <div id="version-tag">FD6.7</div>
+
+    <!-- 🛠️ FD6.7 新增：除錯開關與面板 -->
+    <div id="debug-toggle-btn" onclick="toggleDebugPanel()">除錯 OFF</div>
+    <div id="tracking-debug-panel">
+        <div class="row"><span>狀態：</span><span id="dbg-status" class="miss">未偵測到光點</span></div>
+        <div class="row"><span>maxG / R / B：</span><span id="dbg-rgb">-</span></div>
+        <div class="row"><span>目前門檻 G＞</span><span id="dbg-threshold-val">130</span></div>
+        <input type="range" id="dbg-threshold-slider" min="30" max="250" value="130" oninput="updateThresholdFromSlider(this.value)">
+        <div class="row"><span>目前比例＞</span><span id="dbg-ratio-val">1.35</span></div>
+        <input type="range" id="dbg-ratio-slider" min="100" max="200" value="135" oninput="updateRatioFromSlider(this.value)">
+        <label>提示：晃動魔杖，觀察 maxG 數值，把門檻滑桿拉到略低於該值即可</label>
+    </div>
 
     <!-- 初始主畫面符文繪製層 -->
     <div id="start-screen">
@@ -199,6 +248,15 @@
         <img src="CIC-hat.png" class="hp-hat-icon" id="hp-hat-5">
     </div>
 
+    <!-- 🛠️ FD6.7 新增：攝影機錯誤提示畫面 -->
+    <div id="camera-error-screen">
+        <div id="camera-error-icon">📷🚫</div>
+        <div id="camera-error-title">無法啟動攝影機</div>
+        <div id="camera-error-detail">偵測到問題，請依下方指示排查。</div>
+        <div id="camera-error-solution"></div>
+        <button id="camera-error-retry" onclick="retryCameraAccess()">重新嘗試</button>
+    </div>
+
     <!-- 重新挑戰畫面 -->
     <div id="game-over-screen">
         <div id="game-over-text">特訓結束</div>
@@ -220,6 +278,9 @@
         const hpBar = document.getElementById('hat-hp-bar');
         const startBtn = document.getElementById('start-ritual-btn');
         const instructionBox = document.getElementById('instruction');
+        const cameraErrorScreen = document.getElementById('camera-error-screen');
+        const cameraErrorDetail = document.getElementById('camera-error-detail');
+        const cameraErrorSolution = document.getElementById('camera-error-solution');
 
         // 隱藏輔助畫布：專門用來抽取相機原始影像像素
         const sampleCanvas = document.createElement('canvas');
@@ -255,6 +316,34 @@
 
         // 火球加成速度變數
         let fireballSpeedBonus = 0;
+
+        // 🛠️ FD6.7 新增：LED 追蹤可調參數 + 除錯面板控制
+        let LED_G_THRESHOLD = 130;   // 綠色亮度門檻，抓不到請調低（例如 80~100）
+        let LED_RATIO = 1.35;        // G 相對 R/B 的比例門檻，抓不到請調低（例如 1.10~1.20）
+        let DEBUG_TRACKING = false;  // 除錯面板開關，由右上角按鈕控制
+
+        const debugPanel = document.getElementById('tracking-debug-panel');
+        const debugToggleBtn = document.getElementById('debug-toggle-btn');
+        const dbgStatusEl = document.getElementById('dbg-status');
+        const dbgRgbEl = document.getElementById('dbg-rgb');
+        const dbgThresholdValEl = document.getElementById('dbg-threshold-val');
+        const dbgRatioValEl = document.getElementById('dbg-ratio-val');
+
+        function toggleDebugPanel() {
+            DEBUG_TRACKING = !DEBUG_TRACKING;
+            debugPanel.style.display = DEBUG_TRACKING ? 'block' : 'none';
+            debugToggleBtn.innerText = DEBUG_TRACKING ? '除錯 ON' : '除錯 OFF';
+        }
+
+        function updateThresholdFromSlider(val) {
+            LED_G_THRESHOLD = parseInt(val, 10);
+            dbgThresholdValEl.innerText = LED_G_THRESHOLD;
+        }
+
+        function updateRatioFromSlider(val) {
+            LED_RATIO = parseInt(val, 10) / 100;
+            dbgRatioValEl.innerText = LED_RATIO.toFixed(2);
+        }
 
         function resizeCanvases() {
             canvas.width = window.innerWidth;
@@ -517,7 +606,11 @@
             }, 1000);
         }
 
-        // 🛠️ FD6.6 重構：LED 高亮燈芯極值鎖定，絕殺臉部/皮膚微弱漫反射
+        // 🛠️ FD6.7 重構：LED 高亮燈芯極值鎖定 + 可調參數 + 除錯面板輸出
+        // 修正重點：
+        //   1. 門檻與比例改為可調變數（LED_G_THRESHOLD / LED_RATIO），可用畫面右上角除錯面板即時調整
+        //   2. 取樣步進從 2px 改為 1px，避免小光點被跳過漏抓
+        //   3. 無論有無命中，都會即時計算全畫面「實際最大 G 值」，讓你知道該把門檻調到多少
         function processLuminancePeakTracking() {
             if (!video.videoWidth || video.readyState < 2) return;
 
@@ -548,21 +641,35 @@
             let maxGreenValue = 0;
             let peakX = -1, peakY = -1;
 
-            for (let y = 0; y < sampleH; y += 2) {
-                for (let x = 0; x < sampleW; x += 2) {
+            // 除錯用：不管有沒有過門檻，都記錄全畫面實際最亮的 G 值
+            let debugMaxG = 0, debugMaxR = 0, debugMaxB = 0;
+
+            for (let y = 0; y < sampleH; y += 1) {
+                for (let x = 0; x < sampleW; x += 1) {
                     let idx = (y * sampleW + x) * 4;
                     let r = data[idx], g = data[idx + 1], b = data[idx + 2];
 
-                    // 【FD6.6 核心過濾】：調高純綠光門檻 (G > 130，且 G 比 R, B 高出 35%)
-                    // 這樣只能抓到 LED 最亮的實體燈芯，漫反射在臉頰的淡綠光會全部被過濾掉！
-                    if (g > 130 && g > r * 1.35 && g > b * 1.35) {
-                        // 強制尋找 G 值最高的單一極致亮點，不採計區域平均值
+                    if (g > debugMaxG) { debugMaxG = g; debugMaxR = r; debugMaxB = b; }
+
+                    // 【核心過濾】：用可調變數取代寫死的 130 / 1.35
+                    if (g > LED_G_THRESHOLD && g > r * LED_RATIO && g > b * LED_RATIO) {
                         if (g > maxGreenValue) {
                             maxGreenValue = g;
                             peakX = x;
                             peakY = y;
                         }
                     }
+                }
+            }
+
+            if (DEBUG_TRACKING) {
+                dbgRgbEl.innerText = `${debugMaxG} / ${debugMaxR} / ${debugMaxB}`;
+                if (peakX !== -1) {
+                    dbgStatusEl.innerText = '命中光點';
+                    dbgStatusEl.className = 'hit';
+                } else {
+                    dbgStatusEl.innerText = '未偵測到光點';
+                    dbgStatusEl.className = 'miss';
                 }
             }
 
@@ -588,25 +695,120 @@
             }
         }
 
-        let trackerInitialized = false;
-        function initTrackerAndAR() {
-            if (trackerInitialized) return;
-            trackerInitialized = true;
+        // 🛠️ FD6.7 新增：顯示攝影機錯誤畫面，附上原因與對應解法
+        function showCameraError(title, detail, solution) {
+            document.getElementById('camera-error-title').innerText = title;
+            cameraErrorDetail.innerText = detail;
+            cameraErrorSolution.innerText = solution;
+            cameraErrorScreen.style.display = 'flex';
+        }
 
+        function hideCameraError() {
+            cameraErrorScreen.style.display = 'none';
+        }
+
+        // 🛠️ FD6.7 新增：依錯誤類型或環境狀態，給出對應的中文說明
+        function reportCameraError(err) {
+            // 情況一：非安全環境（file:// 或非 localhost 的 http://）
+            let isSecureContext = window.isSecureContext;
+            let protocol = window.location.protocol;
+            if (!isSecureContext || (protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(window.location.hostname))) {
+                showCameraError(
+                    "環境不允許啟動攝影機",
+                    `目前網址：${window.location.href}\n瀏覽器規定只有 https:// 或 http://localhost 才能呼叫攝影機。直接雙擊 HTML 檔案開啟（file://）會被瀏覽器擋下。`,
+                    "解法：\n1. 用本機伺服器開啟，例如終端機輸入：\n   python3 -m http.server 8000\n   再瀏覽器開 http://localhost:8000\n2. 或上傳到 GitHub Pages / Netlify 等有 https:// 的網站後開啟。"
+                );
+                return;
+            }
+
+            // 情況二：瀏覽器完全不支援 getUserMedia
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showCameraError(
+                    "此瀏覽器不支援攝影機功能",
+                    "目前瀏覽器版本過舊，或此瀏覽器不支援網頁呼叫攝影機（getUserMedia API）。",
+                    "解法：請改用近期版本的 Chrome、Safari 或 Edge 瀏覽器開啟。"
+                );
+                return;
+            }
+
+            // 情況三：依 DOMException.name 判斷實際錯誤原因
+            let name = err && err.name ? err.name : '';
+            if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+                showCameraError(
+                    "攝影機權限被拒絕",
+                    "你先前拒絕了攝影機權限，或裝置系統層級關閉了此瀏覽器的攝影機存取。",
+                    "解法：\n1. 點網址列左側的鎖頭／相機圖示，把攝影機權限改為「允許」。\n2. 手機請至系統「設定」→「隱私權」→「相機」，開啟此瀏覽器的權限。\n3. 改好後點下方「重新嘗試」。"
+                );
+            } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+                showCameraError(
+                    "找不到攝影機裝置",
+                    "這台裝置沒有偵測到可用的攝影機，或攝影機驅動程式異常。",
+                    "解法：確認裝置有內建或外接攝影機，並確認其他 App（如視訊軟體）能正常使用它。"
+                );
+            } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+                showCameraError(
+                    "攝影機被其他程式佔用",
+                    "偵測到攝影機硬體，但目前可能被其他分頁或應用程式（如 Zoom、Teams、Line）佔用中，導致無法取得畫面。",
+                    "解法：關閉其他正在使用攝影機的分頁或 App，然後點下方「重新嘗試」。"
+                );
+            } else if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError') {
+                showCameraError(
+                    "攝影機不支援所需畫質設定",
+                    "此攝影機無法提供程式要求的解析度規格。",
+                    "解法：這通常會自動改用預設畫質重試；若持續發生，請點下方「重新嘗試」。"
+                );
+            } else {
+                showCameraError(
+                    "攝影機啟動失敗",
+                    `發生未預期的錯誤：${name || (err && err.message) || '未知原因'}`,
+                    "解法：請確認瀏覽器已更新到最新版本，並重新整理頁面後點「重新嘗試」。"
+                );
+            }
+        }
+
+        // 🛠️ FD6.7 新增：實際嘗試取得攝影機串流，並在成功/失敗時分別處理
+        function requestCameraStream() {
             const videoConstraints = {
                 audio: false,
                 video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
             };
 
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                navigator.mediaDevices.getUserMedia(videoConstraints)
-                    .then(function(stream) {
-                        video.srcObject = stream;
-                        video.play().catch(function(e) {});
-                    }).catch(function(err) {
-                        navigator.mediaDevices.getUserMedia({ video: true }).then(function(stream) { video.srcObject = stream; });
-                    });
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                reportCameraError(null);
+                return;
             }
+
+            navigator.mediaDevices.getUserMedia(videoConstraints)
+                .then(function(stream) {
+                    hideCameraError();
+                    video.srcObject = stream;
+                    video.play().catch(function(e) {});
+                })
+                .catch(function(err) {
+                    // 理想畫質失敗時，退回最基本的 video:true 再試一次
+                    navigator.mediaDevices.getUserMedia({ video: true })
+                        .then(function(stream) {
+                            hideCameraError();
+                            video.srcObject = stream;
+                            video.play().catch(function(e) {});
+                        })
+                        .catch(function(fallbackErr) {
+                            reportCameraError(fallbackErr);
+                        });
+                });
+        }
+
+        function retryCameraAccess() {
+            hideCameraError();
+            requestCameraStream();
+        }
+
+        let trackerInitialized = false;
+        function initTrackerAndAR() {
+            if (trackerInitialized) return;
+            trackerInitialized = true;
+
+            requestCameraStream();
 
             const faceMesh = new FaceMesh({
                 locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
