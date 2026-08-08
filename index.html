@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Kinetic Sorcery - 巫師火原素特訓 (FD6.5)</title>
+    <title>Kinetic Sorcery - 巫師火原素特訓 (FD6.6)</title>
     
     <!-- Google Fonts 史詩級魔法書寫與哥德風格字型 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -100,7 +100,7 @@
         .hp-hat-icon { width: 26px; height: 26px; object-fit: contain; transition: all 0.3s ease; filter: drop-shadow(0 0 4px #ffd700); }
         .hp-hat-lost { opacity: 0.15; filter: grayscale(1) drop-shadow(0 0 0px transparent); transform: scale(0.75); }
 
-        /* 畫面左下角版本標籤 - FD6.5 */
+        /* 畫面左下角版本標籤 - FD6.6 */
         #version-tag {
             position: absolute; bottom: 12px; left: 15px; z-index: 30;
             font-family: monospace, sans-serif; font-size: 12px; font-weight: bold;
@@ -149,7 +149,7 @@
     <video id="webcam" preload autoplay loop muted playsinline></video>
 
     <!-- 左下角版本標籤 -->
-    <div id="version-tag">FD6.5</div>
+    <div id="version-tag">FD6.6</div>
 
     <!-- 初始主畫面符文繪製層 -->
     <div id="start-screen">
@@ -517,7 +517,7 @@
             }, 1000);
         }
 
-        // 🛠️ FD6.5 重構：專利綠色 LED 色彩鎖定 (Green LED Targeted Tracker)
+        // 🛠️ FD6.6 重構：LED 高亮燈芯極值鎖定，絕殺臉部/皮膚微弱漫反射
         function processLuminancePeakTracking() {
             if (!video.videoWidth || video.readyState < 2) return;
 
@@ -528,7 +528,6 @@
             sampleCanvas.height = sampleH;
 
             sampleCtx.save();
-            // 鏡像翻轉對齊鏡頭
             sampleCtx.translate(sampleW, 0);
             sampleCtx.scale(-1, 1);
             
@@ -540,52 +539,38 @@
             let offX = (rW - sampleW) / 2;
             let offY = (rH - sampleH) / 2;
 
-            // 直接抓取相機 video 影格，不受 Canvas 繪製影響
             sampleCtx.drawImage(video, -offX, -offY, rW, rH);
             sampleCtx.restore();
 
             let imgData = sampleCtx.getImageData(0, 0, sampleW, sampleH);
             let data = imgData.data;
 
-            let greenSumX = 0, greenSumY = 0, greenCount = 0;
             let maxGreenValue = 0;
-            let bestX = -1, bestY = -1;
+            let peakX = -1, peakY = -1;
 
             for (let y = 0; y < sampleH; y += 2) {
                 for (let x = 0; x < sampleW; x += 2) {
                     let idx = (y * sampleW + x) * 4;
                     let r = data[idx], g = data[idx + 1], b = data[idx + 2];
 
-                    // 綠色 LED 核心條件：G 顯著高於 R 與 B，且 G 強度足夠高 (G > 90)
-                    if (g > 90 && g > r * 1.2 && g > b * 1.2) {
-                        greenSumX += x;
-                        greenSumY += y;
-                        greenCount++;
-
+                    // 【FD6.6 核心過濾】：調高純綠光門檻 (G > 130，且 G 比 R, B 高出 35%)
+                    // 這樣只能抓到 LED 最亮的實體燈芯，漫反射在臉頰的淡綠光會全部被過濾掉！
+                    if (g > 130 && g > r * 1.35 && g > b * 1.35) {
+                        // 強制尋找 G 值最高的單一極致亮點，不採計區域平均值
                         if (g > maxGreenValue) {
                             maxGreenValue = g;
-                            bestX = x;
-                            bestY = y;
+                            peakX = x;
+                            peakY = y;
                         }
                     }
                 }
             }
 
-            let trackedX = -1, trackedY = -1;
-
-            if (greenCount > 0) {
-                // 採用質心計算，防止單一像素震盪
-                trackedX = greenSumX / greenCount;
-                trackedY = greenSumY / greenCount;
-            } else if (bestX !== -1) {
-                trackedX = bestX;
-                trackedY = bestY;
-            }
-
-            if (trackedX !== -1 && trackedY !== -1) {
+            if (peakX !== -1 && peakY !== -1) {
                 crosshair.hasTracking = true;
-                crosshair.targetX = trackedX * (canvas.width / sampleW);
-                crosshair.targetY = trackedY * (canvas.height / sampleH);
+                // 將極致亮點映射至全螢幕 Canvas 座標
+                crosshair.targetX = peakX * (canvas.width / sampleW);
+                crosshair.targetY = peakY * (canvas.height / sampleH);
 
                 if (gameState === 'drawing') {
                     checkWandPointCollision(crosshair.targetX, crosshair.targetY);
@@ -774,7 +759,7 @@
             }
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // 每影格進行綠色 LED 精準光點追蹤
+            // 每影格進行綠色 LED 精準燈芯極值鎖定
             if (gameState === 'drawing' || gameState === 'ready' || gameState === 'playing') {
                 processLuminancePeakTracking();
             }
